@@ -1,8 +1,9 @@
+use std::fs;
 use std::io::{BufRead, Result};
 use std::collections::HashMap;
 use std::io::{BufReader, ErrorKind};
 use std::process::Stdio;
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf};
 use clap::{Command, Arg};
 
 
@@ -33,30 +34,30 @@ pub struct App {
 impl App {
     pub fn new() -> Result<App> {
         App::get_app_config()
-            .map(|config| App { config })
+          .map(|config| App { config })
     }
 
     fn get_app_config() -> Result<Config> {
         let app = Command::new("make-ts-app")
-            .name("Make TS App")
-            .about("A Simple app to generate Serverless Typescript Project")
-            .arg(Arg::new("name")
-                .required(true)
-                .help("Name of app")
-                .value_name("APP_NAME")
-            )
-            .arg(Arg::new("bucket")
-                .required(true)
-                .help("S3 bucket to store artifacts")
-                .value_name("BUCKET")
-                .short('b')
-                .long("bucket_name"))
-            .arg(Arg::new("stack-name")
-                .required(true)
-                .help("Name of cloudformation stack")
-                .value_name("STACK_NAME")
-                .short('s')
-                .long("stack_name"));
+          .name("Make TS App")
+          .about("A Simple app to generate Serverless Typescript Project")
+          .arg(Arg::new("name")
+            .required(true)
+            .help("Name of app")
+            .value_name("APP_NAME")
+          )
+          .arg(Arg::new("bucket")
+            .required(true)
+            .help("S3 bucket to store artifacts")
+            .value_name("BUCKET")
+            .short('b')
+            .long("bucket_name"))
+          .arg(Arg::new("stack-name")
+            .required(true)
+            .help("Name of cloudformation stack")
+            .value_name("STACK_NAME")
+            .short('s')
+            .long("stack_name"));
 
         let matches = app.get_matches();
         let app_name = matches.value_of("name").ok_or(AppError::MissingName)?;
@@ -76,9 +77,9 @@ impl App {
 impl App {
     pub fn run(self) -> Result<()> {
         Ok(Template::get_all())
-            .map(|templates| (templates, self.make_template_variables()))
-            .and_then(|(templates, variables)| self.write_templates(&templates, &variables))
-            .and_then(|_| self.install_dependencies())
+          .map(|templates| (templates, self.make_template_variables()))
+          .and_then(|(templates, variables)| self.write_templates(&templates, &variables))
+          .and_then(|_| self.install_dependencies())
     }
 
     fn make_template_variables(&self) -> HashMap<&str, &String> {
@@ -93,22 +94,20 @@ impl App {
         let app_dir = self.app_directory_path()?;
         let source_dir = self.source_directory_path()?;
 
-        std::fs::create_dir(&app_dir)?;
-        std::fs::create_dir(&source_dir)?;
+        fs::create_dir(&app_dir)?;
+        fs::create_dir(&source_dir)?;
 
-        for template in templates {
-            let content = render_template(template, variables);
-
+        templates.iter().map(|template| {
+            render_template(template, variables);
             let template_dir = match template.kind {
                 TemplateKind::App => &app_dir,
                 TemplateKind::Src => &source_dir
             };
 
-            let file_name = format!("{}.{}", template.name, template.extension);
-            let file_path = Path::new(&template_dir).join(file_name);
-            std::fs::write(file_path, content)?;
-        }
-        Ok(())
+            let mut template_path = template_dir.join(&template.name);
+            template_path.set_extension(&template.extension);
+            fs::write(template_path, &template.content)
+        }).collect()
     }
 
     fn install_dependencies(&self) -> Result<()> {
@@ -117,18 +116,18 @@ impl App {
         ];
 
         let stdout = std::process::Command::new("npm")
-            .args(&args)
-            .current_dir(self.source_directory_path()?)
-            .stdout(Stdio::piped())
-            .spawn()?
-            .stdout
-            .ok_or_else(|| std::io::Error::new(ErrorKind::Other, "Could not capture standard output."))?;
+          .args(&args)
+          .current_dir(self.source_directory_path()?)
+          .stdout(Stdio::piped())
+          .spawn()?
+          .stdout
+          .ok_or_else(|| std::io::Error::new(ErrorKind::Other, "Could not capture standard output."))?;
 
         let reader = BufReader::new(stdout);
 
         reader.lines()
-            .filter_map(|line| line.ok())
-            .for_each(|line| println!("{}", line));
+          .filter_map(|line| line.ok())
+          .for_each(|line| println!("{}", line));
         Ok(())
     }
 }
